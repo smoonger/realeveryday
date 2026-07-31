@@ -442,10 +442,8 @@ a.link{color:var(--pink);text-decoration:none;font-weight:600}
    저장: Supabase kv (500명 동시 사용 · 관리자 통계 중앙 집계)
    ============================================================ */
 /* ===== [설치 시 필수] 아래 두 값을 본인 Supabase 프로젝트 값으로 교체 ===== */
-const SUPABASE_URL      = 'https://fxkdvgjbxfskdcddyzpp.supabase.co
-';
-const SUPABASE_ANON_KEY = 'sb_publishable_gHM_kUVL0ugs_qpFIawjWw_ewznYuSM
-';
+const SUPABASE_URL      = 'https://fxkdvgjbxfskdcddyzpp.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_gHM_kUVL0ugs_qpFIawjWw_ewznYuSM';
 const _sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 /* session(자동로그인 유지)만 브라우저별 localStorage, 나머지(진도·단어세트)는 Supabase 중앙 저장 */
 function _revLocal(k){ return k === 'session'; }
