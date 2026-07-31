@@ -535,7 +535,7 @@ document.querySelectorAll('.acc button').forEach(b=>b.onclick=()=>{
 
 /* ============ LOGIN ============ */
 const ENTRY_CODE='reality';
-const ADMIN_PIN='해.님';
+const ADMIN_PIN='hae.nim';
 
 /* ---------- 자동 로그인 세션 ---------- */
 async function saveSession(obj){ if($('autoLogin')&&!$('autoLogin').checked){await clearSession();return;} await sSet('session', JSON.stringify(obj)); }
