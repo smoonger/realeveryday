@@ -1,0 +1,17 @@
+{
+  "name": "매일매일 이얼영어",
+  "short_name": "이얼영어",
+  "description": "매일매일 이얼영어 · REAL EVERYDAY VOCA - 수능·공무원 영어 단어 학습",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#08080F",
+  "theme_color": "#10184A",
+  "lang": "ko",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

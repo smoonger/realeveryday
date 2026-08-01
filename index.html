@@ -4,6 +4,15 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <title>매일매일 이얼영어 · REAL EVERYDAY VOCA</title>
+<!-- PWA(설치형 앱) 설정 -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#10184A">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="이얼영어">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -446,8 +455,8 @@ a.link{color:var(--pink);text-decoration:none;font-weight:600}
    ============================================================ */
 /* ===== [설치 시 필수] 아래 두 값을 본인 Supabase 프로젝트 값으로 교체 ===== */
 const SUPABASE_URL      = 'https://gtctxiuqkhhoyvgzhyle.supabase.co'
-const SUPABASE_ANON_KEY = 'sb_publishable_tYpmJiAyowr_mVstp8qlNg_18sG8sAP'
-const _sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+const SUPABASE_ANON_KEY = 'sb_publishable_tYpmJiAyowr_mVstp8qlNg_18sG8sAP';
+const _sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 /* 모든 데이터(진도·단어세트)는 Supabase kv 중앙 저장 */
 
 /* ---------- DEMO 단어 세트 (시반나마 27 파일 오면 교체) ---------- */
@@ -984,6 +993,11 @@ function genTest(){
   ['s-track','ad-sort','t-type'].forEach(id=>enhanceSelect($(id)));
   show('login');
 })();
+
+/* PWA: 서비스워커 등록(설치형 앱 + 두 번째 방문부터 즉시 로딩). http/https에서만 동작 */
+if('serviceWorker' in navigator && location.protocol.startsWith('http')){
+  window.addEventListener('load',()=>{ navigator.serviceWorker.register('sw.js').catch(e=>console.warn('SW 등록 실패',e)); });
+}
 </script>
 </body>
 </html>
