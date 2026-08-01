@@ -266,7 +266,17 @@ a.link{color:var(--pink);text-decoration:none;font-weight:600}
       <button class="btn ghost" onclick="startStage(0)" style="margin-top:10px">해석 연습</button>
     </div>
   </div>
-
+<!-- STUDENT STUDY -->
+  <section id="v-study" class="hidden">
+    <div class="study-head">
+      <button class="btn ghost sm" onclick="showStudentSets()">← 세트 목록</button>
+      <div class="modechips" id="study-chips"></div>
+    </div>
+    <div class="progressbar"><i id="study-prog" style="width:0%"></i></div>
+    <div class="qcounter" id="study-counter"></div>
+    <div id="study-body" style="margin-top:14px"></div>
+  </section>
+  
   <!-- ============ STAGE 1: flashcards ============ -->
   <div id="screen-flash" class="hidden">
     <div class="learnnav" id="flashNav"></div>
