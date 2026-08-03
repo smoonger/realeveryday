@@ -473,10 +473,13 @@ async function sGet(k,sh=false){
     return data ? data.value : null;
   }catch(e){ console.warn('sGet fallback',k,e); return mem[k]??null; }
 }
+const _lastSaved = {};   // 키별 마지막으로 저장한 값 — 같으면 재전송 안 함(대역폭 절감)
 async function sSet(k,v,sh=false){
+  if(_lastSaved[k]===v) return;   // 변화 없으면 통신 생략
   try{
     const { error } = await _sb.from('kv').upsert({ key:k, value:v }, { onConflict:'key' });
     if(error) throw error;
+    _lastSaved[k]=v;
   }catch(e){ console.warn('sSet fallback',k,e); mem[k]=v; }
 }
 async function sList(pre,sh=false){
@@ -598,7 +601,14 @@ async function loginAdmin(btn){
 }
 function logout(){ USER=null;PROG=null;show('login');$('s-name').value='';$('s-code').value='';$('a-pin').value=''; }
 
-async function saveProg(){ if(!USER||!PROG)return; await sSet('progress::'+USER.track+'::'+USER.name, JSON.stringify(PROG)); }
+async function saveProg(){
+  if(!USER||!PROG)return;
+  // 자주 틀린 단어 맵은 무한정 커질 수 있어 상위 60개만 유지(리포트엔 8개만 쓰므로 충분) → 저장 용량·통신량 절감
+  if(PROG.missed && Object.keys(PROG.missed).length>60){
+    PROG.missed = Object.fromEntries(Object.entries(PROG.missed).sort((a,b)=>b[1]-a[1]).slice(0,60));
+  }
+  await sSet('progress::'+USER.track+'::'+USER.name, JSON.stringify(PROG));
+}
 
 /* ---------- custom sets persistence ---------- */
 async function loadCustom(){ customSets=JSON.parse(await sGet('custom_wordsets',true)||'[]'); }
@@ -759,11 +769,13 @@ function checkTyped(){
   const w=quizList[qi];const val=$('q-typed').value.trim().toLowerCase();
   judge(val===w.en.toLowerCase(),null,w,'spell');
 }
+/* 정답률 집계: 옛 데이터엔 acc 필드가 없을 수 있어 매번 보장해줌(없으면 100%로 잘못 잡히는 원인) */
+function recordAnswer(ok){ if(!PROG.acc||typeof PROG.acc.t!=='number'){PROG.acc={c:0,t:0};} PROG.acc.t++; if(ok)PROG.acc.c++; }
 function judge(ok,btn,w,type){
   if(btn){document.querySelectorAll('.opt').forEach(b=>b.dataset.locked='1');
     btn.classList.add(ok?'correct':'wrong');
     if(!ok)document.querySelectorAll('.opt').forEach(b=>{if(b.textContent===(stage===2?w.kr:w.en))b.classList.add('correct');});}
-  PROG.acc.t++; if(ok){PROG.acc.c++;qCorrect++;addXP(5);confetti(6);flyXP('+5');}
+  recordAnswer(ok); if(ok){qCorrect++;addXP(5);confetti(6);flyXP('+5');}
   else{ PROG.typeErr[type]=(PROG.typeErr[type]||0)+1; PROG.missed[w.en]=(PROG.missed[w.en]||0)+1; if(!ok&&type==='spell')toast('정답: '+w.en); }
   setTimeout(()=>{ if(qi<quizList.length-1){qi++;renderQuiz();} else finishQuiz(); }, ok?520:1050);
 }
@@ -804,7 +816,7 @@ function renderInterp(){
     b.onclick=()=>{if(b.dataset.l)return;document.querySelectorAll('.opt').forEach(x=>x.dataset.l='1');
       const ok=c===w.exKr;b.classList.add(ok?'correct':'wrong');
       if(!ok)document.querySelectorAll('.opt').forEach(x=>{if(x.textContent===w.exKr)x.classList.add('correct');});
-      if(ok){qCorrect++;addXP(4);confetti(5);}
+      recordAnswer(ok); if(ok){qCorrect++;addXP(4);confetti(5);}
       setTimeout(()=>{if(qi<quizList.length-1){qi++;renderInterp();}else{addTime();saveProg();
         resultScreen('📖','해석 연습 완료!','문장 속에서 단어를 익혔어요',qCorrect+'/'+quizList.length,qCorrect*4,()=>{show('home');refreshHome();},'홈으로');}},ok?500:1000);
     };opts.appendChild(b);});
@@ -846,8 +858,11 @@ function renderReport(p){
   $('rep-name').textContent=p.name+' 님 · 주간 리포트';
   const mins=Math.round((p.totalTime||0)/60);
   const words=Object.values(p.days||{}).reduce((a,b)=>a+b,0);
-  const acc=p.acc&&p.acc.t?Math.round(p.acc.c/p.acc.t*100):0;
-  $('rep-time').textContent=mins+'분';$('rep-words').textContent=words;$('rep-acc').textContent=acc+'%';
+  const at=(p.acc&&p.acc.t)||0;
+  const acc=at?Math.round(p.acc.c/at*100):0;
+  const accEnough=at>=5;                                   // 5문제 미만이면 정답률 신뢰 어려움
+  const accLabel=accEnough?acc+'%':'집계 전';
+  $('rep-time').textContent=mins+'분';$('rep-words').textContent=words;$('rep-acc').textContent=accLabel;
   // weak types
   const names={krpick:'뜻 고르기',enpick:'영어 고르기',blank:'빈칸 채우기',spell:'스펠링'};
   const te=p.typeErr||{};const sorted=Object.entries(names).map(([k,v])=>[v,te[k]||0]).sort((a,b)=>b[1]-a[1]);
@@ -862,7 +877,7 @@ function renderReport(p){
 `[매일매일 이얼영어 · 주간 리포트]
 수험생: ${p.name} (${p.track})
 · 이번 주 학습시간: ${mins}분
-· 암기 단어: ${words}개  |  평균 정답률: ${acc}%
+· 암기 단어: ${words}개  |  평균 정답률: ${accLabel}
 · 연속 학습: ${p.streak||0}일
 · 보완이 필요한 유형: ${worst[0]} (${worst[1]}회 오답)
 · 권장 학습시간: 하루 ${rec}분
@@ -891,8 +906,9 @@ async function loadAdmin(){
   for(const row of data){ const p=JSON.parse(row.value||'null'); if(!p)continue;
     const words=Object.values(p.days||{}).reduce((a,b)=>a+b,0);
     const passed=Object.values(p.stages||{}).reduce((a,st)=>a+Object.keys(st).length,0);
-    const acc=p.acc&&p.acc.t?Math.round(p.acc.c/p.acc.t*100):0;
-    rows.push({name:p.name,track:p.track,words,passed,time:Math.round((p.totalTime||0)/60),acc,recent:p.lastDay||'-'});}
+    const at=(p.acc&&p.acc.t)||0;                         // 시도한 문제 수
+    const acc=at?Math.round(p.acc.c/at*100):0;
+    rows.push({name:p.name,track:p.track,words,passed,time:Math.round((p.totalTime||0)/60),acc,at,recent:p.lastDay||'-'});}
   ADMIN_ROWS=rows; renderAdminSummary(); renderAdminTable();
 }
 function renderAdminSummary(){
@@ -909,13 +925,15 @@ function renderAdminTable(){
   const tb=$('ad-table').querySelector('tbody');tb.innerHTML='';
   $('ad-empty').classList.toggle('hidden',rows.length>0);
   rows.slice(0,300).forEach(r=>{const tr=document.createElement('tr');
-    const cls=r.acc>=80?'g':r.acc>=60?'y':'r';
+    const enough=r.at>=5;                                  // 최소 5문제는 풀어야 정답률 신뢰
+    const cls=!enough?'':r.acc>=80?'g':r.acc>=60?'y':'r';
+    const accCell=enough?`<span class="tag ${cls}">${r.acc}%</span>`:`<span class="dim small" title="푼 문제가 적어 정답률 미집계 (${r.at}문제)">—</span>`;
     tr.style.cursor='pointer';
     tr.title='클릭하면 주간 리포트';
     tr.onclick=()=>openStudentReport(r.name,r.track);
     tr.innerHTML=`<td>${r.name}</td><td class="dim">${r.track}</td><td class="num">${r.words}</td>
       <td class="num">${r.passed}</td><td class="num">${r.time}분</td>
-      <td><span class="tag ${cls}">${r.acc}%</span></td><td class="dim small">${r.recent}</td>`;
+      <td>${accCell}</td><td class="dim small">${r.recent}</td>`;
     tb.appendChild(tr);});
 }
 /* demo 500명 채우기 */
