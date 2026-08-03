@@ -770,7 +770,7 @@ function checkTyped(){
   judge(val===w.en.toLowerCase(),null,w,'spell');
 }
 /* 정답률 집계: 옛 데이터엔 acc 필드가 없을 수 있어 매번 보장해줌(없으면 100%로 잘못 잡히는 원인) */
-function recordAnswer(ok){ if(!PROG.acc||typeof PROG.acc.t!=='number'){PROG.acc={c:0,t:0};} PROG.acc.t++; if(ok)PROG.acc.c++; }
+function recordAnswer(ok){ if(!PROG.acc||typeof PROG.acc.t!=='number'){PROG.acc={c:0,t:0};} PROG.acc.t++; if(ok)PROG.acc.c++; PROG.lastDay=today(); }
 function judge(ok,btn,w,type){
   if(btn){document.querySelectorAll('.opt').forEach(b=>b.dataset.locked='1');
     btn.classList.add(ok?'correct':'wrong');
@@ -860,7 +860,9 @@ function renderReport(p){
   const words=Object.values(p.days||{}).reduce((a,b)=>a+b,0);
   const at=(p.acc&&p.acc.t)||0;
   const acc=at?Math.round(p.acc.c/at*100):0;
-  const accEnough=at>=5;                                   // 5문제 미만이면 정답률 신뢰 어려움
+  const passedCnt=Object.values(p.stages||{}).reduce((a,st)=>a+Object.keys(st).length,0);
+  const studied=(words>0)||(passedCnt>0);                 // 카드학습 또는 단계통과 기록
+  const accEnough=at>=5 && studied;                        // 5문제 이상 + 실제 학습해야 정답률 신뢰
   const accLabel=accEnough?acc+'%':'집계 전';
   $('rep-time').textContent=mins+'분';$('rep-words').textContent=words;$('rep-acc').textContent=accLabel;
   // weak types
@@ -925,9 +927,10 @@ function renderAdminTable(){
   const tb=$('ad-table').querySelector('tbody');tb.innerHTML='';
   $('ad-empty').classList.toggle('hidden',rows.length>0);
   rows.slice(0,300).forEach(r=>{const tr=document.createElement('tr');
-    const enough=r.at>=5;                                  // 최소 5문제는 풀어야 정답률 신뢰
+    const studied=(r.words>0)||(r.passed>0);              // 카드학습 또는 단계통과 기록이 있어야 '학습함'
+    const enough=r.at>=5 && studied;                       // 5문제 이상 + 실제 학습해야 정답률 신뢰
     const cls=!enough?'':r.acc>=80?'g':r.acc>=60?'y':'r';
-    const accCell=enough?`<span class="tag ${cls}">${r.acc}%</span>`:`<span class="dim small" title="푼 문제가 적어 정답률 미집계 (${r.at}문제)">—</span>`;
+    const accCell=enough?`<span class="tag ${cls}">${r.acc}%</span>`:`<span class="dim small" title="학습 기록이 적어 정답률 미집계">—</span>`;
     tr.style.cursor='pointer';
     tr.title='클릭하면 주간 리포트';
     tr.onclick=()=>openStudentReport(r.name,r.track);
