@@ -82,6 +82,8 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .btn:disabled{opacity:.6;cursor:default;transform:none}
 .btn.ghost{background:rgba(255,255,255,.05);border:1px solid var(--line);box-shadow:none;color:var(--white)}
 .btn.pink{background:linear-gradient(120deg,var(--pink),var(--pink-d));box-shadow:0 10px 30px rgba(255,46,147,.35)}
+.btn.pur{background:rgba(168,85,247,.08);border:1.5px solid var(--purple-l);color:#D8C6FF;box-shadow:0 0 18px rgba(168,85,247,.30)}
+.btn.pinkneon{background:rgba(255,46,147,.08);border:1.5px solid var(--pink);color:#FFC0E0;box-shadow:0 0 18px rgba(255,46,147,.30)}
 .btn.sm{padding:10px 14px;font-size:13.5px;border-radius:11px;width:auto}
 .row{display:flex;gap:10px}.row>*{flex:1}
 
@@ -293,6 +295,7 @@ a.link{color:var(--pink);text-decoration:none;font-weight:600}
         <div class="stat"><div class="v pur" id="h-words">0</div><div class="k">누적 암기 단어</div></div>
         <div class="stat"><div class="v ok" id="h-xp">0</div><div class="k">XP</div></div>
       </div>
+      <button class="btn pur" style="margin-top:14px;width:100%" onclick="openMyReport()">📊 내 리포트 · 자주 틀린 단어 보기</button>
     </div>
     <div class="card">
       <div class="eyebrow">단어장 선택</div>
@@ -384,10 +387,13 @@ a.link{color:var(--pink);text-decoration:none;font-weight:600}
       <div class="divider"></div>
       <div class="eyebrow">자주 틀린 단어</div>
       <div id="rep-missed" style="margin-top:10px"></div>
-      <div class="divider"></div>
-      <div class="eyebrow">가정통신문 (복사용)</div>
-      <div class="report" id="rep-text" style="margin-top:10px"></div>
-      <button class="btn pink" style="margin-top:12px" onclick="copyReport()">문구 복사하기</button>
+      <button class="btn pinkneon" id="rep-review-btn" style="margin-top:12px;display:none" onclick="reviewMissed()">🔁 틀린 단어만 다시 풀기</button>
+      <div id="rep-parent">
+        <div class="divider"></div>
+        <div class="eyebrow">가정통신문 (복사용)</div>
+        <div class="report" id="rep-text" style="margin-top:10px"></div>
+        <button class="btn pink" style="margin-top:12px" onclick="copyReport()">문구 복사하기</button>
+      </div>
     </div>
   </div>
 
@@ -703,7 +709,7 @@ function renderStageNav(id,active){
   el.innerHTML=NAV_ITEMS.map(([n,l])=>`<button class="${n===active?'on':''}" onclick="navStage(${n})">${l}</button>`).join('');
 }
 function navStage(n){
-  stopAuto(); sessStart=Date.now(); if(PROG&&CUR){PROG.lastSet=CUR.id;saveProg();}
+  stopAuto(); sessStart=Date.now(); if(PROG&&CUR){ if(CUR.id!=='review')PROG.lastSet=CUR.id; saveProg(); }
   if(n===0)return startInterpret();
   if(n===1)return startFlash();
   startQuiz(n);
@@ -746,7 +752,7 @@ function startFlash(resume){
 }
 function renderCard(){
   const w=CUR.words[idx];
-  if(PROG){ if(!PROG.lastCard)PROG.lastCard={}; PROG.lastCard[CUR.id]=idx; }
+  if(PROG&&CUR.id!=='review'){ if(!PROG.lastCard)PROG.lastCard={}; PROG.lastCard[CUR.id]=idx; }
   $('f-en').textContent=w.en; $('f-pos').textContent=w.pos;
   $('f-kr').textContent=w.kr; $('f-ex').textContent=w.ex||''; $('f-exkr').textContent=w.exKr||'';
   ['f-kr','f-ex','f-exkr'].forEach(id=>$(id).classList.add('hidden'));
@@ -821,6 +827,8 @@ function speak(t){
   }catch(e){}
 }
 async function finishFlash(){
+  if(CUR&&CUR.id==='review'){ addTime(); await saveProg();
+    resultScreen('🔁','오답 복습 완료!','틀린 단어를 한 번 더 봤어요. 상단 탭에서 퀴즈로도 확인해봐요!',CUR.words.length,0,()=>{show('home');refreshHome();},'홈으로'); return; }
   markStage(1); if(PROG){if(!PROG.lastCard)PROG.lastCard={};PROG.lastCard[CUR.id]=0;} addWords(CUR.words.length); addXP(CUR.words.length*2); addTime();
   await saveProg();
   resultScreen('🃏','카드 학습 완료!','이제 뜻 고르기 단계로!',CUR.words.length,CUR.words.length*2,()=>startQuiz(2));
@@ -889,6 +897,8 @@ function judge(ok,btn,w,type){
   setTimeout(()=>{ if(qi<quizList.length-1){qi++;renderQuiz();} else finishQuiz(); }, ok?520:1050);
 }
 async function finishQuiz(){
+  if(CUR&&CUR.id==='review'){ addTime(); await saveProg();
+    resultScreen('🔁','오답 복습 결과',qCorrect+' / '+quizList.length+' 정답',qCorrect+'/'+quizList.length,qCorrect*5,()=>{show('home');refreshHome();},'홈으로'); return; }
   const passed=qCorrect/quizList.length>=0.7;
   if(passed)markStage(stage);
   addTime(); await saveProg();
@@ -941,7 +951,7 @@ function resultScreen(emoji,title,sub,score,xp,next,label){
 }
 
 /* ============ progress mutators ============ */
-function markStage(n){if(!PROG.stages[CUR.id])PROG.stages[CUR.id]={};PROG.stages[CUR.id][n]=true;}
+function markStage(n){if(CUR&&CUR.id==='review')return;if(!PROG.stages[CUR.id])PROG.stages[CUR.id]={};PROG.stages[CUR.id][n]=true;}
 function addWords(n){const d=today();PROG.days[d]=(PROG.days[d]||0)+n;
   if(PROG.lastDay!==d){const y=new Date(Date.now()-864e5).toISOString().slice(0,10);PROG.streak=(PROG.lastDay===y)?PROG.streak+1:1;PROG.lastDay=d;}}
 function addXP(n){PROG.xp+=n;}
@@ -955,13 +965,29 @@ function confetti(n){const cs=['#FF2E93','#8B5CF6','#A855F7','#FFFFFF','#10184A'
 function flyXP(t){const e=document.createElement('div');e.className='xp';e.textContent=t;
   e.style.left=(40+Math.random()*20)+'vw';e.style.top='55vh';document.body.appendChild(e);setTimeout(()=>e.remove(),1000);}
 
-/* ============ WEEKLY REPORT (관리자 전용) ============ */
+/* ============ WEEKLY REPORT (관리자 + 학생 본인) ============ */
+let reportFrom='admin';
 async function openStudentReport(name, track){
   const p=JSON.parse(await sGet('progress::'+track+'::'+name)||'null');
   if(!p){toast('학습 기록이 없어요');return;}
-  renderReport(p);
+  reportFrom='admin'; renderReport(p);
 }
-function closeReport(){ show('admin'); }
+function openMyReport(){
+  if(!USER||!PROG){toast('로그인 후 이용해 주세요');return;}
+  reportFrom='home'; renderReport(PROG);
+}
+function reviewMissed(){
+  if(!USER||!PROG){toast('로그인 후 이용해 주세요');return;}
+  const order=Object.entries(PROG.missed||{}).sort((a,b)=>b[1]-a[1]).map(([en])=>en);
+  if(!order.length){toast('아직 틀린 단어가 없어요 👏');return;}
+  const all=allSets().flatMap(s=>s.words);
+  const seen={}, words=[];
+  order.forEach(en=>{ if(seen[en])return; const w=all.find(x=>x.en===en); if(w){words.push(w);seen[en]=1;} });
+  if(!words.length){toast('오답 단어를 찾을 수 없어요');return;}
+  CUR={id:'review',title:'오답 복습 ('+words.length+'개)',words,track:(USER&&USER.track)||''};
+  startFlash();   // 카드부터 — 상단 탭으로 뜻·영어·빈칸·스펠링 퀴즈도 같은 오답 세트로 가능
+}
+function closeReport(){ if(reportFrom==='home'){ show('home'); refreshHome(); } else { show('admin'); } }
 function renderReport(p){
   show('report');
   $('rep-name').textContent=p.name+' 님 · 주간 리포트';
@@ -982,6 +1008,8 @@ function renderReport(p){
   // missed words
   const missed=Object.entries(p.missed||{}).sort((a,b)=>b[1]-a[1]).slice(0,8);
   $('rep-missed').innerHTML=missed.length?missed.map(([w,c])=>`<span class="chip">${w} ×${c}</span>`).join(''):'<span class="dim small">자주 틀린 단어가 없어요 👏</span>';
+  $('rep-review-btn').style.display=(reportFrom==='home'&&missed.length)?'block':'none';
+  $('rep-parent').style.display=(reportFrom==='admin')?'block':'none';
   // parent text
   const worst=sorted[0];const rec=Math.max(20,Math.round(words/7)+10);
   $('rep-text').textContent=
