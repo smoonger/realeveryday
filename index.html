@@ -264,8 +264,8 @@ a.link{color:var(--pink);text-decoration:none;font-weight:600}
       <div id="studentLogin">
         <label class="fl">직렬 / 반</label>
         <select id="s-track">
-          <option>일반행정</option><option>교육행정</option><option>법원직</option><option>세무</option>
-          <option>경찰</option><option>소방</option><option>기타</option>
+          <option>일반행정</option><option>법원직</option><option>계리직</option>
+          <option>편입영어</option><option>수능영어</option><option>중등영어</option>
         </select>
         <label class="fl">이름</label>
         <input id="s-name" placeholder="예) 김하늘" autocomplete="off"/>
@@ -595,7 +595,14 @@ document.querySelectorAll('.acc button').forEach(b=>b.onclick=()=>{
 });
 
 /* ============ LOGIN ============ */
-const ENTRY_CODE='reality';
+const ENTRY_CODES={
+  '일반행정':'굿독뱃독',
+  '법원직':'원직아밥먹어',
+  '계리직':'본본리본',
+  '편입영어':'더높이올라',
+  '수능영어':'한번에잘하자',
+  '중등영어':'vocavocachoo'
+};
 const ADMIN_PIN='hae.nim';
 
 async function enterStudent(track,name,progRaw,customLoaded){
@@ -621,7 +628,8 @@ async function loginStudent(btn){
   const isNew=$('s-isNew')&&$('s-isNew').checked;
   if(!name){toast('이름을 입력하세요');return;}
   if(!code){toast('입장 코드를 입력하세요');return;}
-  if(code.toLowerCase()!==ENTRY_CODE){toast('입장 코드가 올바르지 않아요');return;}
+  const expectedCode=ENTRY_CODES[track];
+  if(!expectedCode||code.toLowerCase()!==expectedCode.toLowerCase()){toast('입장 코드가 올바르지 않아요');return;}
   const key='progress::'+track+'::'+name;
   busy(btn,true);
   try{
@@ -1080,7 +1088,7 @@ function renderAdminTable(){
 async function seedDemo(){
   const fam=['김','이','박','최','정','강','조','윤','장','임','한','오','서','신','권','황','안','송','류','전'];
   const giv=['하늘','서준','민지','도윤','예린','지호','수아','건우','채원','시우','유진','현우','다은','준호','소율','태양','나윤','재민','하린','승현'];
-  const tracks=['일반행정','교육행정','법원직','세무','경찰','소방'];
+  const tracks=['일반행정','법원직','계리직','편입영어','수능영어','중등영어'];
   toast('500명 생성 중...');
   for(let i=0;i<500;i++){
     const name=fam[i%20]+giv[(i*7)%20]+(i>380?String(i):'');
