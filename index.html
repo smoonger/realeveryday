@@ -250,6 +250,9 @@ a.link{color:var(--pink);text-decoration:none;font-weight:600}
 .delbtn{ background:rgba(255,46,147,.14); color:var(--pink); border:1px solid rgba(255,46,147,.4);
   border-radius:8px; padding:4px 10px; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap; }
 .delbtn:hover{ background:var(--pink); color:#fff; }
+.fixbtn{ background:rgba(124,131,180,.16); color:#cfd3ee; border:1px solid rgba(124,131,180,.45);
+  border-radius:8px; padding:4px 10px; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap; margin-right:6px; }
+.fixbtn:hover{ background:#7C83B4; color:#fff; }
 #screen-quiz .opt:active{ background:#E4E8F3; }
 #screen-quiz .opt.correct{ background:rgba(18,160,120,.14); border-color:#12A070; color:#0E7A5A; }
 #screen-quiz .opt.wrong{ background:rgba(224,60,90,.13); border-color:#E14B67; color:#C42A48; }
@@ -1008,7 +1011,22 @@ function allStagesDone(id){const s=PROG.stages&&PROG.stages[id];return !!(s&&s[1
 function addWords(n){const d=today();PROG.days[d]=(PROG.days[d]||0)+n;
   if(PROG.lastDay!==d){const y=new Date(Date.now()-864e5).toISOString().slice(0,10);PROG.streak=(PROG.lastDay===y)?PROG.streak+1:1;PROG.lastDay=d;}}
 function addXP(n){PROG.xp+=n;}
-function addTime(){PROG.totalTime=(PROG.totalTime||0)+Math.round((Date.now()-sessStart)/1000);sessStart=Date.now();}
+/* 한 번에 인정하는 최대 학습시간(초). 한 단계(약 40단어)에 10분 이상 '연속' 매달리는 경우는
+   거의 없으므로, 자리를 비우거나 탭을 켜둔 채 방치해 시간이 폭증하는 것을 막는 상한선. */
+const IDLE_CAP=600;
+function addTime(){
+  if(!sessStart){sessStart=Date.now();return;}
+  const sec=Math.round((Date.now()-sessStart)/1000);
+  PROG.totalTime=(PROG.totalTime||0)+Math.max(0,Math.min(sec,IDLE_CAP));
+  sessStart=Date.now();
+}
+/* 탭이 백그라운드로 넘어가면 그 순간까지만 시간을 적립하고, 다시 돌아오면 sessStart를 새로
+   맞춰 그동안(백그라운드) 흐른 시간은 집계하지 않는다. */
+document.addEventListener('visibilitychange',()=>{
+  if(!USER||!PROG||!sessStart)return;
+  if(document.hidden){ addTime(); }
+  else { sessStart=Date.now(); }
+});
 
 /* ============ effects ============ */
 function confetti(n){const cs=['#FF2E93','#8B5CF6','#A855F7','#FFFFFF','#10184A'];
@@ -1127,10 +1145,12 @@ function renderAdminTable(){
     tr.innerHTML=`<td>${r.name}</td><td class="dim">${r.track}</td><td class="num">${r.words}</td>
       <td class="num">${r.passed}</td><td class="num">${r.time}분</td>
       <td>${accCell}</td><td class="dim small">${r.recent}</td>
-      <td><button class="delbtn" type="button" title="이 학생 기록 삭제">삭제</button></td>`;
-    // 삭제 버튼: 행 클릭(리포트 열기)과 겹치지 않도록 이벤트 전파를 막는다.
+      <td><button class="fixbtn" type="button" title="학습시간 보정">시간</button><button class="delbtn" type="button" title="이 학생 기록 삭제">삭제</button></td>`;
+    // 버튼 클릭이 행 클릭(리포트 열기)과 겹치지 않도록 이벤트 전파를 막는다.
     const del=tr.querySelector('.delbtn');
     del.onclick=(ev)=>{ ev.stopPropagation(); deleteStudent(r.name,r.track); };
+    const fix=tr.querySelector('.fixbtn');
+    fix.onclick=(ev)=>{ ev.stopPropagation(); fixStudentTime(r.name,r.track,r.time); };
     tb.appendChild(tr);});
 }
 /* 관리자: 학생 명단에서 한 명의 기록을 완전히 삭제 */
@@ -1148,6 +1168,27 @@ async function deleteStudent(name, track){
   } else {
     toast('삭제 실패(네트워크 오류) — 잠시 후 다시 시도해 주세요');
   }
+}
+/* 관리자: 특정 학생의 누적 학습시간(분)을 직접 보정.
+   자리비움·탭방치로 부풀려진 시간을 바로잡을 때 사용. 암기 개수·정답률 등 다른 기록은 건드리지 않음. */
+async function fixStudentTime(name, track, curMin){
+  const input = prompt(
+    '['+name+' · '+track+'] 학습시간 보정\n\n올바른 누적 학습시간을 "분" 단위로 입력하세요.\n(0을 넣으면 학습시간만 0으로 초기화됩니다. 암기 개수·정답률 등\n다른 기록은 그대로 유지돼요.)',
+    String(curMin||0)
+  );
+  if(input===null) return;                        // 취소
+  const min = Number(String(input).trim());
+  if(!Number.isFinite(min) || min<0){ alert('0 이상의 숫자(분)를 입력해 주세요.'); return; }
+  const key = 'progress::'+track+'::'+name;
+  const raw = await sGet(key);
+  const p = raw ? JSON.parse(raw) : null;
+  if(!p){ toast('학생 기록을 찾지 못했어요'); return; }
+  p.totalTime = Math.round(min*60);               // 분 → 초로 저장
+  await sSet(key, JSON.stringify(p));
+  const r = ADMIN_ROWS.find(x=>x.name===name && x.track===track);
+  if(r) r.time = Math.round(min);                 // 화면 표도 즉시 갱신
+  renderAdminSummary(); renderAdminTable();
+  toast(name+' 학습시간을 '+Math.round(min)+'분으로 보정했어요');
 }
 /* demo 500명 채우기 */
 async function seedDemo(){
