@@ -1,7 +1,7 @@
 /* 매일매일 이얼영어 - 서비스워커
    앱 껍데기(index.html, 아이콘)를 캐시해 두 번째 방문부터 즉시 로딩.
    단어/진도 데이터는 Supabase(네트워크)에서 항상 최신으로 가져옴. */
-const CACHE = 'iyeol-voca-v1';
+const CACHE = 'iyeol-voca-v2';
 const ASSETS = [
   './',
   './index.html',
