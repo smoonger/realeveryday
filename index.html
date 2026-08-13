@@ -589,7 +589,14 @@ function goHome(){ stopAuto(); if(USER&&PROG){ addTime(); saveProg(); } show('ho
 /* 로그인 등 서버 대기 중 버튼에 로딩 상태 표시(체감 지연 완화) */
 function busy(btn,on){ if(!btn)return; if(on){ btn.dataset.t=btn.textContent; btn.textContent='입장 중…'; btn.disabled=true; } else { btn.textContent=btn.dataset.t||btn.textContent; btn.disabled=false; } }
 function shuffle(a){a=[...a];for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]];}return a;}
-function today(){return new Date().toISOString().slice(0,10);}
+/* 한국 시간(KST, UTC+9) 기준 날짜(YYYY-MM-DD). 기기 시간대와 무관하게 항상 한국 날짜로
+   학습일 통계·연속일을 집계한다. 한국은 서머타임이 없어 +9 고정으로 정확함. */
+function kstDate(ms){return new Date(ms+9*3600e3).toISOString().slice(0,10);}
+function today(){return kstDate(Date.now());}
+function yday(){return kstDate(Date.now()-864e5);}
+/* 연속 학습일 갱신(공용): 카드학습·퀴즈·해석 어디서 학습하든 '오늘 학습함'을 하루 한 번만 반영.
+   어제도 학습했으면 +1, 하루 이상 비었으면 1로 리셋. 날짜는 로컬(한국) 기준. */
+function markStudyDay(){const d=today();if(PROG.lastDay===d)return;PROG.streak=(PROG.lastDay===yday())?(PROG.streak||0)+1:1;PROG.lastDay=d;}
 function allSets(){return [...BUILTIN, ...(customSets||[])];}
 let customSets=[];
 
@@ -940,7 +947,7 @@ function checkTyped(){
   judge(val===w.en.toLowerCase(),null,w,'spell');
 }
 /* 정답률 집계: 옛 데이터엔 acc 필드가 없을 수 있어 매번 보장해줌(없으면 100%로 잘못 잡히는 원인) */
-function recordAnswer(ok){ if(!PROG.acc||typeof PROG.acc.t!=='number'){PROG.acc={c:0,t:0};} PROG.acc.t++; if(ok)PROG.acc.c++; PROG.lastDay=today(); }
+function recordAnswer(ok){ if(!PROG.acc||typeof PROG.acc.t!=='number'){PROG.acc={c:0,t:0};} PROG.acc.t++; if(ok)PROG.acc.c++; markStudyDay(); }
 function judge(ok,btn,w,type){
   if(btn){document.querySelectorAll('.opt').forEach(b=>b.dataset.locked='1');
     btn.classList.add(ok?'correct':'wrong');
@@ -1011,8 +1018,7 @@ function resultScreen(emoji,title,sub,score,xp,next,label){
 function markStage(n){if(CUR&&CUR.id==='review')return;if(!PROG.stages[CUR.id])PROG.stages[CUR.id]={};PROG.stages[CUR.id][n]=true;}
 /* 해당 세트의 1~5단계를 모두 통과했는지 */
 function allStagesDone(id){const s=PROG.stages&&PROG.stages[id];return !!(s&&s[1]&&s[2]&&s[3]&&s[4]&&s[5]);}
-function addWords(n){const d=today();PROG.days[d]=(PROG.days[d]||0)+n;
-  if(PROG.lastDay!==d){const y=new Date(Date.now()-864e5).toISOString().slice(0,10);PROG.streak=(PROG.lastDay===y)?PROG.streak+1:1;PROG.lastDay=d;}}
+function addWords(n){const d=today();PROG.days[d]=(PROG.days[d]||0)+n;markStudyDay();}
 function addXP(n){PROG.xp+=n;}
 /* 한 번에 인정하는 최대 학습시간(초). 한 단계(약 40단어)에 10분 이상 '연속' 매달리는 경우는
    거의 없으므로, 자리를 비우거나 탭을 켜둔 채 방치해 시간이 폭증하는 것을 막는 상한선. */
@@ -1221,7 +1227,7 @@ async function seedDemo(){
     const name=fam[i%20]+giv[(i*7)%20]+(i>380?String(i):'');
     const track=tracks[i%tracks.length];
     const words=Math.floor(Math.random()*260);
-    const days={};let d=new Date();for(let k=0;k<7;k++){days[new Date(d-k*864e5).toISOString().slice(0,10)]=Math.floor(Math.random()*40);}
+    const days={};let d=new Date();for(let k=0;k<7;k++){days[kstDate(d-k*864e5)]=Math.floor(Math.random()*40);}
     const t=Math.round(Object.values(days).reduce((a,b)=>a+b,0));
     const acc={t:t*4,c:Math.round(t*4*(0.5+Math.random()*0.5))};
     const stages={'demo-d01':{}};for(let s=1;s<=1+Math.floor(Math.random()*5);s++)stages['demo-d01'][s]=true;
