@@ -263,6 +263,15 @@ a.link{color:var(--pink);text-decoration:none;font-weight:600}
 #screen-quiz input{ background:#F3F5FB; border:1px solid #DCE0EE; color:#1C2748; }
 #screen-quiz input::placeholder{ color:#8B93B0; }
 #screen-quiz input:focus{ background:#FFFFFF; border-color:var(--navy); box-shadow:0 0 0 3px rgba(16,24,74,.12); }
+/* 스펠링 정오답 리마인드 — 입력창 자체를 강조색으로 채워서 맞았는지/정답이 뭔지 확실히 보이게 한다 */
+#screen-quiz input.spell-ok{ background:rgba(18,160,120,.14); border-color:#12A070; color:#0E7A5A; font-weight:700; }
+#screen-quiz input.spell-bad{ background:rgba(224,60,90,.13); border-color:#E14B67; color:#C42A48; font-weight:700; }
+.spellfb{ margin-top:12px; padding:14px 16px; border-radius:14px; font-size:17px; font-weight:700; text-align:center;
+  opacity:0; transform:translateY(6px); transition:.18s ease; }
+.spellfb.show{ opacity:1; transform:translateY(0); }
+.spellfb.ok{ background:rgba(18,160,120,.14); border:1.5px solid #12A070; color:#0E7A5A; }
+.spellfb.bad{ background:rgba(224,60,90,.13); border:1.5px solid #E14B67; color:#C42A48; }
+.spellfb b{ font-size:20px; }
 </style>
 </head>
 <body>
@@ -400,6 +409,7 @@ a.link{color:var(--pink);text-decoration:none;font-weight:600}
       <div id="q-input" class="hidden">
         <input id="q-typed" placeholder="영어 스펠링 입력 후 Enter" autocomplete="off" onkeydown="if(event.key==='Enter')checkTyped()"/>
         <button class="btn" style="margin-top:12px" onclick="checkTyped()">확인</button>
+        <div id="q-spellFb" class="spellfb hidden"></div>
       </div>
     </div>
   </div>
@@ -952,8 +962,25 @@ function renderQuiz(){
     options(w.en, pool().map(x=>x.en), (chosen,btn)=>judge(chosen===w.en,btn,w,'blank'));
   } else if(stage===5){ // 스펠링 입력
     prompt.className='q krq'; prompt.innerHTML=w.kr+'<div class="dim small mono" style="margin-top:8px">'+hint(w.en)+'</div>';
-    $('q-opts').classList.add('hidden'); $('q-input').classList.remove('hidden'); $('q-typed').value=''; $('q-typed').focus();
+    $('q-opts').classList.add('hidden'); $('q-input').classList.remove('hidden'); resetSpellInput();
   }
+}
+/* 스펠링 입력창을 새 문제용으로 초기화(값 비우기·잠금 해제·직전 정오답 표시 제거) */
+function resetSpellInput(){
+  const input=$('q-typed'); input.value=''; input.disabled=false; input.classList.remove('spell-ok','spell-bad'); input.focus();
+  const btn=$('q-input').querySelector('button'); if(btn) btn.disabled=false;
+  const fb=$('q-spellFb'); if(fb){ fb.className='spellfb hidden'; fb.innerHTML=''; }
+}
+/* 스펠링 채점 후 리마인드 연출: 맞으면 큰 초록 반응(짧게), 틀리면 입력창에 정답을 채워 강조색으로
+   보여주고 충분히 오래(2초) 머무른 뒤 다음 문제로 넘어간다 — 정답을 놓치지 않게 하기 위함. */
+function showSpellFeedback(ok, correctWord){
+  const input=$('q-typed');
+  input.disabled=true; input.classList.add(ok?'spell-ok':'spell-bad');
+  if(!ok) input.value=correctWord;
+  const btn=$('q-input').querySelector('button'); if(btn) btn.disabled=true;
+  const fb=$('q-spellFb');
+  if(fb){ fb.className='spellfb show '+(ok?'ok':'bad'); fb.innerHTML=ok?'✅ 정답이에요!':'정답은 <b>'+correctWord+'</b> 이에요'; }
+  return ok?900:2000;
 }
 function pool(){return shuffle(CUR.words.length>=4?CUR.words:CUR.words.concat(BUILTIN[0].words)).slice(0,6);}
 function options(correct, wrongs, cb){
@@ -984,8 +1011,9 @@ function judge(ok,btn,w,type){
     btn.classList.add(ok?'correct':'wrong');
     if(!ok)document.querySelectorAll('.opt').forEach(b=>{if(b.textContent===(stage===2?w.kr:w.en))b.classList.add('correct');});}
   recordAnswer(ok); if(ok){qCorrect++;addXP(5);confetti(6);flyXP('+5');}
-  else{ PROG.typeErr[type]=(PROG.typeErr[type]||0)+1; PROG.missed[w.en]=(PROG.missed[w.en]||0)+1; if(!ok&&type==='spell')toast('정답: '+w.en); }
-  setTimeout(()=>{ if(qi<quizList.length-1){qi++;renderQuiz();} else finishQuiz(); }, ok?520:1050);
+  else{ PROG.typeErr[type]=(PROG.typeErr[type]||0)+1; PROG.missed[w.en]=(PROG.missed[w.en]||0)+1; }
+  const delay = type==='spell' ? showSpellFeedback(ok,w.en) : (ok?520:1050);
+  setTimeout(()=>{ if(qi<quizList.length-1){qi++;renderQuiz();} else finishQuiz(); }, delay);
 }
 async function finishQuiz(){
   if(CUR&&CUR.id==='review'){ addTime(); await saveProg();
@@ -1015,30 +1043,49 @@ async function finishQuiz(){
    뜻고르기·영어고르기·빈칸채우기·스펠링·(예문 있는 단어는) 해석까지 모든 유형을 섞어
    세트의 모든 단어를 최소 1회씩(유형은 랜덤) 다루는 것을 기본으로 하고, 부족분은 무작위로 채워 총 60문항으로 압축한다.
    70% 이상 맞히면 1~5단계를 순서대로 다 통과한 것과 동일하게 '암기 완료'로 인정한다(대안 경로 — 둘 중 하나만 완료해도 됨). */
-function mixTypeFor(w){
+function allTypesFor(w){
   const base=['krpick','enpick','blank','spell'];
-  const types=(w.ex&&w.exKr)?base.concat(['interp']):base;
+  return (w.ex&&w.exKr)?base.concat(['interp']):base;
+}
+function mixTypeFor(w){
+  const types=allTypesFor(w);
   return types[Math.floor(Math.random()*types.length)];
 }
+/* "보기가 반복적이고 겹친다"는 의견 반영: 같은 (단어+유형) 문제가 두 번 나오는 일이 없도록 하고,
+   한 단어가 세 번 이상 나오지 않도록(최대 2회) 제한해서 60문항 전체가 훨씬 다양하게 느껴지게 한다. */
 function buildMixQuiz(words,target){
-  let list=shuffle(words).map(w=>({w,type:mixTypeFor(w)}));   // 1차: 모든 단어를 빠짐없이 1회씩(유형 랜덤)
-  if(list.length>target){
-    list=shuffle(list).slice(0,target);
-  } else if(list.length<target){
-    const extra=[];                                            // 2차: 목표 문항수까지 무작위로 보충
-    while(list.length+extra.length<target){
-      const w=words[Math.floor(Math.random()*words.length)];
-      extra.push({w,type:mixTypeFor(w)});
-    }
-    list=shuffle(list.concat(extra));
-  } else {
-    list=shuffle(list);
+  const base=shuffle(words).map(w=>({w,type:mixTypeFor(w)}));   // 1차: 모든 단어를 빠짐없이 1회씩(유형 랜덤)
+  if(base.length>=target) return shuffle(base).slice(0,target);
+  const need=target-base.length;
+  const usedTypeByWord=new Map(base.map(b=>[b.w,b.type]));
+  // 2차 보충: 이미 나온 (단어+유형) 조합은 제외하고, 단어당 남은 다른 유형 중에서만 뽑는다 → 중복 문제 원천 차단
+  let candidatePool=[];
+  words.forEach(w=>{
+    allTypesFor(w).filter(t=>t!==usedTypeByWord.get(w)).forEach(t=>candidatePool.push({w,type:t}));
+  });
+  candidatePool=shuffle(candidatePool);
+  const usedExtraWord=new Set();
+  const extra=[];
+  for(const c of candidatePool){
+    if(extra.length>=need) break;
+    if(usedExtraWord.has(c.w)) continue;      // 한 단어는 보충분에서 최대 1회만(=전체 최대 2회) 등장
+    extra.push(c); usedExtraWord.add(c.w);
   }
-  return list;
+  while(base.length+extra.length<target){    // 세트가 아주 작아 위에서도 못 채웠을 때만 쓰는 안전장치
+    const w=words[Math.floor(Math.random()*words.length)];
+    extra.push({w,type:mixTypeFor(w)});
+  }
+  return shuffle(base.concat(extra));
+}
+let mixDistractorQueue=[];   // 보기(선택지)용 회전 큐 — 매번 40단어 전체에서 무작위로 뽑으면 근처 문제끼리 보기가 겹쳐 보이므로,
+                              // 세션 시작 시 한 번 섞은 뒤 순서대로 소진하고, 다 쓰면 다시 섞어 이어간다.
+function mixPool(){
+  if(mixDistractorQueue.length<8) mixDistractorQueue=mixDistractorQueue.concat(shuffle(CUR.words));
+  return mixDistractorQueue.splice(0,6);
 }
 function startMix(){
   if(!CUR||!CUR.words||!CUR.words.length){toast('단어 세트를 먼저 선택하세요');return;}
-  stage=6; mixList=buildMixQuiz(CUR.words,MIX_TARGET); mi=0; mCorrect=0; sessStart=Date.now(); show('quiz');
+  stage=6; mixList=buildMixQuiz(CUR.words,MIX_TARGET); mi=0; mCorrect=0; mixDistractorQueue=[]; sessStart=Date.now(); show('quiz');
   renderStageNav('quizNav',6);
   $('q-title').textContent=CUR.title+' · ⚡빠른 암기(랜덤 '+mixList.length+')';
   renderMix();
@@ -1053,10 +1100,10 @@ function renderMix(){
   if(type==='krpick'){
     prompt.textContent=w.en; if(w.pos)prompt.innerHTML=w.en+' <span style="font-size:14px;opacity:.6">'+w.pos+'</span>';
     speak(w.en);
-    options(w.kr, pool().map(x=>x.kr), (chosen,btn)=>mixJudge(chosen===w.kr,btn,w,'krpick'));
+    options(w.kr, mixPool().map(x=>x.kr), (chosen,btn)=>mixJudge(chosen===w.kr,btn,w,'krpick'));
   } else if(type==='enpick'){
     prompt.className='q krq'; prompt.textContent=w.kr;
-    options(w.en, pool().map(x=>x.en), (chosen,btn)=>mixJudge(chosen===w.en,btn,w,'enpick'));
+    options(w.en, mixPool().map(x=>x.en), (chosen,btn)=>mixJudge(chosen===w.en,btn,w,'enpick'));
   } else if(type==='blank'){
     prompt.className='q krq';
     const blanked=blankSentence(w);
@@ -1064,10 +1111,10 @@ function renderMix(){
       +'<div style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
       +'<button type="button" class="hintbtn" onclick="revealHint(this)">💡 뜻 힌트 보기</button>'
       +'<span class="dim small hinttext hidden">'+w.kr+'</span></div>';
-    options(w.en, pool().map(x=>x.en), (chosen,btn)=>mixJudge(chosen===w.en,btn,w,'blank'));
+    options(w.en, mixPool().map(x=>x.en), (chosen,btn)=>mixJudge(chosen===w.en,btn,w,'blank'));
   } else if(type==='spell'){
     prompt.className='q krq'; prompt.innerHTML=w.kr+'<div class="dim small mono" style="margin-top:8px">'+hint(w.en)+'</div>';
-    $('q-opts').classList.add('hidden'); $('q-input').classList.remove('hidden'); $('q-typed').value=''; $('q-typed').focus();
+    $('q-opts').classList.add('hidden'); $('q-input').classList.remove('hidden'); resetSpellInput();
   } else if(type==='interp'){
     prompt.className='q'; prompt.innerHTML='<div style="font-size:17px;line-height:1.6">'+w.ex+'</div>';
     const wrongPool=shuffle(CUR.words.filter(x=>x.exKr&&x.exKr!==w.exKr)).slice(0,3).map(x=>x.exKr);
@@ -1091,9 +1138,9 @@ function mixJudge(ok,btn,w,type){
   else{
     if(type!=='interp'){ PROG.typeErr[type]=(PROG.typeErr[type]||0)+1; }   // 리포트의 '약점 유형'은 기존 4종만 집계
     PROG.missed[w.en]=(PROG.missed[w.en]||0)+1;
-    if(type==='spell')toast('정답: '+w.en);
   }
-  setTimeout(()=>{ if(mi<mixList.length-1){mi++;renderMix();} else finishMix(); }, ok?450:950);
+  const delay = type==='spell' ? showSpellFeedback(ok,w.en) : (ok?450:950);
+  setTimeout(()=>{ if(mi<mixList.length-1){mi++;renderMix();} else finishMix(); }, delay);
 }
 async function finishMix(){
   const passed=mixList.length>0 && (mCorrect/mixList.length)>=0.7;
