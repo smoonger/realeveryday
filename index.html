@@ -216,6 +216,13 @@ td.num{font-family:'Space Grotesk';font-weight:600}
 .small{font-size:12px}.center{text-align:center}
 .divider{height:1px;background:var(--line);margin:16px 0}
 .chip{display:inline-block;background:var(--grad-soft);border:1px solid var(--line);border-radius:99px;padding:5px 12px;font-size:12px;margin:3px 4px 0 0}
+button.chip{cursor:pointer;font-family:inherit;color:var(--white);font-weight:600}
+button.chip.on{background:var(--pink);border-color:transparent;color:#fff}
+/* 내 단어장: 검색 결과 한 줄(단어/뜻 + 북마크 별) */
+.wb-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 2px;border-bottom:1px solid var(--line)}
+.wb-row:last-child{border-bottom:none}
+.wb-en{font-weight:700}
+.wb-star{background:none;border:none;font-size:21px;cursor:pointer;line-height:1;padding:4px 6px;flex:none}
 a.link{color:var(--pink);text-decoration:none;font-weight:600}
 .notice{background:var(--grad-soft);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:12.5px;color:var(--mute);line-height:1.6}
 @media print{body{background:#fff;color:#000}.wrap{max-width:100%}.noprint{display:none!important}
@@ -272,6 +279,12 @@ a.link{color:var(--pink);text-decoration:none;font-weight:600}
 .spellfb.ok{ background:rgba(18,160,120,.14); border:1.5px solid #12A070; color:#0E7A5A; }
 .spellfb.bad{ background:rgba(224,60,90,.13); border:1.5px solid #E14B67; color:#C42A48; }
 .spellfb b{ font-size:20px; }
+/* 재도전 시 글자별 대조: 맞은 글자는 초록, 틀린 글자는 빨강, 덜 쓴 글자는 회색으로 흐리게 */
+.sp-diff{ font-size:20px; letter-spacing:2px; font-weight:800; margin-bottom:6px; }
+.sp-ok{ color:#12A070; }
+.sp-bad{ color:#E14B67; text-decoration:underline wavy; text-underline-offset:3px; }
+.sp-miss{ color:#B9B9C9; }
+.spellfb .sp-note{ font-size:13px; font-weight:600; opacity:.85; }
 </style>
 </head>
 <body>
@@ -354,6 +367,8 @@ a.link{color:var(--pink);text-decoration:none;font-weight:600}
         <div class="stat"><div class="v ok" id="h-xp">0</div><div class="k">XP</div></div>
       </div>
       <button class="btn limeneon" style="margin-top:14px;width:100%" onclick="openMyReport()">📊 내 리포트 · 자주 틀린 단어 보기</button>
+      <button class="btn pinkneon" id="h-review-btn" style="margin-top:10px;width:100%;display:none" onclick="startTodayReview()">🔁 오늘의 복습 (<span id="h-due-count">0</span>개)</button>
+      <button class="btn pur" style="margin-top:10px;width:100%" onclick="openWordbook()">📚 내 단어장 · 검색 &amp; 북마크</button>
     </div>
     <div class="card">
       <div class="eyebrow">단어장 선택</div>
@@ -460,6 +475,26 @@ a.link{color:var(--pink);text-decoration:none;font-weight:600}
         <div class="report" id="rep-text" style="margin-top:10px"></div>
         <button class="btn pink" style="margin-top:12px" onclick="copyReport()">문구 복사하기</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ============ 내 단어장: 배운 Day의 단어만 검색 + 북마크 ============ -->
+  <div id="screen-wordbook" class="hidden">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div class="eyebrow">내 단어장</div>
+        <button class="btn ghost sm" onclick="closeWordbook()">닫기</button>
+      </div>
+      <p class="dim small" style="margin-top:6px">지금까지 배운 Day의 단어만 모아서 검색하고, 별표로 북마크할 수 있어요.</p>
+      <div style="margin-top:12px"><input id="wb-search" placeholder="단어(en) 또는 뜻(kr) 검색" oninput="renderWordbook()"/></div>
+      <div style="margin-top:10px">
+        <button class="chip on" id="wb-tab-all" onclick="setWordbookFilter('all')">전체</button>
+        <button class="chip" id="wb-tab-mark" onclick="setWordbookFilter('marked')">⭐ 북마크만</button>
+      </div>
+    </div>
+    <div class="card">
+      <div id="wb-list"></div>
+      <p class="dim small center" id="wb-empty" style="margin-top:12px;display:none"></p>
     </div>
   </div>
 
@@ -626,10 +661,11 @@ let PROG=null;            // progress object for user
 let stage=1, idx=0, flipped=false, accent='en-US';
 let quizList=[], qi=0, qCorrect=0, qStart=0, sessStart=0;
 let mixList=[], mi=0, mCorrect=0;   // ⚡ 빠른 암기 모의고사(랜덤 혼합) 전용 상태
+let spellTries=0;   // 스펠링 문제 재도전 횟수(문제당 최대 3회 직접 입력 기회)
 
 /* ---------- utils ---------- */
 const $=id=>document.getElementById(id);
-function show(s){['login','home','flash','quiz','result','report','admin'].forEach(x=>$('screen-'+x).classList.add('hidden'));$('screen-'+s).classList.remove('hidden');window.scrollTo(0,0);}
+function show(s){['login','home','flash','quiz','result','report','wordbook','admin'].forEach(x=>$('screen-'+x).classList.add('hidden'));$('screen-'+s).classList.remove('hidden');window.scrollTo(0,0);}
 function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1800);}
 /* 학습 중 홈으로: 자동재생 정지 + 지금까지의 학습시간/진도 저장 후 홈 이동 */
 function goHome(){ stopAuto(); if(USER&&PROG){ addTime(); saveProg(); } show('home'); refreshHome(); }
@@ -644,6 +680,105 @@ function yday(){return kstDate(Date.now()-864e5);}
 /* 연속 학습일 갱신(공용): 카드학습·퀴즈·해석 어디서 학습하든 '오늘 학습함'을 하루 한 번만 반영.
    어제도 학습했으면 +1, 하루 이상 비었으면 1로 리셋. 날짜는 로컬(한국) 기준. */
 function markStudyDay(){const d=today();if(PROG.lastDay===d)return;PROG.streak=(PROG.lastDay===yday())?(PROG.streak||0)+1:1;PROG.lastDay=d;}
+
+/* ============ SRS (에빙하우스 간격반복 · Anki가 쓰는 SM-2 알고리즘의 간이 버전) ============
+   단어(en)별로 ef(난이도계수, 클수록 잘 외운 단어) · interval(다음 복습까지 며칠) ·
+   reps(연속 정답 횟수) · due(다음 복습 예정일, KST 기준 YYYY-MM-DD)를 PROG.srs에 저장한다.
+   퀴즈에서 정답/오답을 맞힐 때마다(judge/mixJudge) 호출되어 간격을 늘리거나 초기화한다. */
+function srsEntry(en){
+  if(!PROG.srs) PROG.srs={};
+  return PROG.srs[en] || (PROG.srs[en]={ef:2.5, interval:0, reps:0, due:today()});
+}
+function updateSRS(en, ok){
+  const e=srsEntry(en);
+  if(ok){
+    e.reps=(e.reps||0)+1;
+    // 러닝 스텝(Anki와 같은 방식): 처음 맞힌 건 '오늘 안에 한 번 더', 두 번째부터 날짜 간격이 벌어지기 시작.
+    // 1회차: 당일(0일) → 2회차: 내일(1일) → 3회차: 3일 뒤 → 4회차부터: 이전 간격 × 난이도계수
+    e.interval = e.reps===1 ? 0 : e.reps===2 ? 1 : e.reps===3 ? 3 : Math.max(1, Math.round(e.interval*e.ef));
+    if(e.reps>=2) e.ef = Math.min(3.0, (e.ef||2.5) + 0.1);   // 러닝 스텝 통과 후부터 난이도계수 반영
+  } else {
+    // 오답이면 처음부터 다시: 오늘 안에 다시 볼 수 있도록 즉시 재도전 대상으로, 난이도계수도 살짝 낮춰서 더 자주 보게
+    e.reps=0; e.interval=0; e.ef=Math.max(1.3, (e.ef||2.5) - 0.2);
+  }
+  e.due = kstDate(Date.now() + e.interval*864e5);
+}
+/* 오늘(KST) 기준 복습 예정일이 지났거나 오늘인 단어들을, 밀린 지 오래된 순으로 반환.
+   아직 한 번도 퀴즈를 안 풀어본 단어는 srs 항목 자체가 없으므로 대상에서 자연히 빠진다. */
+function dueWords(){
+  if(!PROG.srs) return [];
+  const t=today();
+  const due=Object.keys(PROG.srs).filter(en=>PROG.srs[en].due<=t);
+  if(!due.length) return [];
+  const all=allSets().flatMap(s=>s.words);
+  const seen={}, words=[];
+  due.sort((a,b)=>PROG.srs[a].due.localeCompare(PROG.srs[b].due)).forEach(en=>{
+    if(seen[en])return; const w=all.find(x=>x.en===en); if(w){words.push(w);seen[en]=1;}
+  });
+  return words;
+}
+function startTodayReview(){
+  if(!USER||!PROG){toast('로그인 후 이용해 주세요');return;}
+  const words=dueWords();
+  if(!words.length){toast('오늘 복습할 단어가 없어요 🎉');return;}
+  CUR={id:'review',title:'오늘의 복습 ('+words.length+'개)',words,track:(USER&&USER.track)||''};
+  startFlash();   // 카드부터 — 상단 탭으로 뜻·영어·빈칸·스펠링 퀴즈도 같은 복습 세트로 가능
+}
+
+/* ============ 내 단어장(검색 + 북마크) ============
+   전체 단어은행이 아니라, 학생이 실제로 '시작한 적 있는' Day(PROG.stages에 기록이 있는 세트)의
+   단어만 모아서 보여준다 — 커리큘럼을 건너뛰어 미리 보기보다는 배운 걸 다시 찾아보는 용도. */
+let wbFilter='all';
+function myLearnedWords(){
+  if(!USER||!PROG) return [];
+  const learnedSets=setsForTrack(USER.track).filter(s=>PROG.stages && PROG.stages[s.id] && Object.keys(PROG.stages[s.id]).length>0);
+  const seen={}, words=[];
+  learnedSets.forEach(s=>s.words.forEach(w=>{ if(!seen[w.en]){ words.push(w); seen[w.en]=1; } }));
+  return words;
+}
+function toggleBookmark(en){
+  if(!PROG.bookmarks) PROG.bookmarks={};
+  if(PROG.bookmarks[en]) delete PROG.bookmarks[en]; else PROG.bookmarks[en]=true;
+  saveProg(); renderWordbook();
+}
+function setWordbookFilter(f){
+  wbFilter=f;
+  const tabAll=$('wb-tab-all'), tabMark=$('wb-tab-mark');
+  if(tabAll) tabAll.classList.toggle('on', f==='all');
+  if(tabMark) tabMark.classList.toggle('on', f==='marked');
+  renderWordbook();
+}
+function openWordbook(){
+  if(!USER||!PROG){toast('로그인 후 이용해 주세요');return;}
+  wbFilter='all'; const s=$('wb-search'); if(s)s.value='';
+  setWordbookFilter('all');
+  show('wordbook'); renderWordbook();
+}
+function closeWordbook(){ show('home'); refreshHome(); }
+function renderWordbook(){
+  const box=$('wb-list'), empty=$('wb-empty'); if(!box) return;
+  const q=(($('wb-search')&&$('wb-search').value)||'').trim().toLowerCase();
+  let words=myLearnedWords();
+  if(wbFilter==='marked') words=words.filter(w=>PROG.bookmarks && PROG.bookmarks[w.en]);
+  if(q) words=words.filter(w=>w.en.toLowerCase().includes(q)||(w.kr&&w.kr.toLowerCase().includes(q)));
+  words.sort((a,b)=>a.en.localeCompare(b.en));
+  box.innerHTML='';
+  if(!words.length){
+    if(empty){ empty.style.display='block';
+      empty.textContent = myLearnedWords().length===0 ? '아직 배운 단어가 없어요. Day를 하나 시작해보세요!'
+        : (wbFilter==='marked' ? '북마크한 단어가 아직 없어요.' : '검색 결과가 없어요.'); }
+    return;
+  }
+  if(empty) empty.style.display='none';
+  words.forEach(w=>{
+    const marked=!!(PROG.bookmarks && PROG.bookmarks[w.en]);
+    const row=document.createElement('div'); row.className='wb-row';
+    row.innerHTML='<div><span class="wb-en">'+w.en+'</span>'+(w.pos?' <span class="dim small">'+w.pos+'</span>':'')+'<div class="dim small" style="margin-top:2px">'+w.kr+'</div></div>';
+    const star=document.createElement('button'); star.className='wb-star'; star.textContent=marked?'⭐':'☆';
+    star.onclick=()=>toggleBookmark(w.en);
+    row.appendChild(star); box.appendChild(row);
+  });
+}
 function allSets(){return [...BUILTIN, ...(customSets||[])];}
 /* 직렬(track)에 속한 단어장만 추림 — 학생 화면(단어장 선택)에서 사용, 관리자 화면은 필요시 allSets()로 전체를 봄 */
 /* s.track은 문자열(한 직렬 또는 '전체') 또는 배열(여러 직렬에 걸쳐 공유)일 수 있음 */
@@ -699,7 +834,7 @@ const ENTRY_CODES={
   '일반행정':'굿독뱃독',
   '법원직':'원직아밥먹어',
   '계리직':'본본리본',
-  '세무직':'합격무세',
+  '세무직':'깐깐하게',
   '편입영어':'더높이올라',
   '수능영어':'한번에잘하자',
   '중등영어':'vocavocachoo'
@@ -718,7 +853,9 @@ async function enterStudent(track,name,progRaw,customLoaded){
   const results=await Promise.all(tasks);
   const raw=results[results.length-1];
   const isFresh=!raw;
-  PROG=JSON.parse(raw||'null') || {track,name,xp:0,streak:0,lastDay:'',days:{},stages:{},missed:{},typeErr:{krpick:0,enpick:0,blank:0,spell:0},totalTime:0,acc:{c:0,t:0},lastSet:'',lastCard:{}};
+  PROG=JSON.parse(raw||'null') || {track,name,xp:0,streak:0,lastDay:'',days:{},stages:{},missed:{},typeErr:{krpick:0,enpick:0,blank:0,spell:0},totalTime:0,acc:{c:0,t:0},lastSet:'',lastCard:{},srs:{},bookmarks:{}};
+  if(!PROG.srs) PROG.srs={};   // 이전에 저장된(간격반복 도입 전) 진도에도 srs 필드를 보장
+  if(!PROG.bookmarks) PROG.bookmarks={};   // 이전 진도에도 북마크 필드를 보장
   if(isFresh) saveProg();   // 신규 학생: 입장 즉시 이름 예약 → 같은 이름 동시 가입 방지(화면 대기 없이 백그라운드 저장)
   buildSetPicker(); refreshHome(); show('home');
 }
@@ -866,6 +1003,8 @@ function refreshHome(){
   $('h-streak').textContent=PROG.streak;
   $('h-words').textContent=Object.values(PROG.days).reduce((a,b)=>a+b,0);
   $('h-xp').textContent=PROG.xp;
+  const due=dueWords(), rb=$('h-review-btn');
+  if(rb){ rb.style.display=due.length?'':'none'; const c=$('h-due-count'); if(c)c.textContent=due.length; }
   buildSetPicker();
 }
 
@@ -1046,6 +1185,7 @@ function renderQuiz(){
 }
 /* 스펠링 입력창을 새 문제용으로 초기화(값 비우기·잠금 해제·직전 정오답 표시 제거) */
 function resetSpellInput(){
+  spellTries=0;
   const input=$('q-typed'); input.value=''; input.disabled=false; input.classList.remove('spell-ok','spell-bad'); input.focus();
   const btn=$('q-input').querySelector('button'); if(btn) btn.disabled=false;
   const fb=$('q-spellFb'); if(fb){ fb.className='spellfb hidden'; fb.innerHTML=''; }
@@ -1060,6 +1200,43 @@ function showSpellFeedback(ok, correctWord){
   const fb=$('q-spellFb');
   if(fb){ fb.className='spellfb show '+(ok?'ok':'bad'); fb.innerHTML=ok?'✅ 정답이에요!':'정답은 <b>'+correctWord+'</b> 이에요'; }
   return ok?900:2000;
+}
+/* 스펠링 재도전: 곧바로 정답을 보여주지 않고, 문제당 최대 3회까지 직접 다시 입력할 기회를 준다.
+   1·2회차에 틀리면 맞은 글자는 그대로 두고(입력값을 지우지 않음) 어디가 틀렸는지만 보여준 뒤 이어서 고치게 하고,
+   3회차까지 틀리면 그때 최종 오답 처리(onFinal)한다. */
+function trySpell(ok, typed, correctWord, onFinal){
+  if(ok || ++spellTries>=3){ onFinal(ok); return; }
+  spellRetryFeedback(typed, correctWord);
+}
+/* 입력한 철자와 정답을 글자 위치별로 비교해 초록(맞음)/빨강(틀림)/회색(덜 씀)으로 표시할 HTML 생성 */
+function diffSpell(typed, correct){
+  const len=Math.max(typed.length, correct.length);
+  let html='';
+  for(let i=0;i<len;i++){
+    const tc=typed[i], cc=correct[i];
+    if(tc===undefined){ html+='<span class="sp-miss">'+cc+'</span>'; }
+    else if(cc!==undefined && tc.toLowerCase()===cc.toLowerCase()){ html+='<span class="sp-ok">'+tc+'</span>'; }
+    else{ html+='<span class="sp-bad">'+tc+'</span>'; }
+  }
+  return html;
+}
+function spellRetryFeedback(typed, correctWord){
+  const input=$('q-typed'), btn=$('q-input').querySelector('button');
+  input.disabled=true; if(btn) btn.disabled=true;
+  input.classList.remove('spell-ok','spell-bad');
+  const fb=$('q-spellFb'), left=3-spellTries;
+  if(fb){
+    fb.className='spellfb show bad';
+    fb.innerHTML='<div class="sp-diff mono">'+diffSpell(typed, correctWord)+'</div>'
+      +'<div class="sp-note">초록색 글자는 맞았어요 · 다시 써보세요! (남은 기회 '+left+'번)</div>';
+  }
+  setTimeout(()=>{
+    // 입력값은 지우지 않고 그대로 둔다 — 맞게 쓴 부분을 다시 안 쳐도 되게, 커서만 끝으로 이동
+    input.disabled=false; input.focus();
+    const v=input.value; try{ input.setSelectionRange(v.length, v.length); }catch(e){}
+    if(btn) btn.disabled=false;
+    if(fb){ fb.className='spellfb hidden'; fb.innerHTML=''; }
+  }, 1200);
 }
 function pool(){return shuffle(CUR.words.length>=4?CUR.words:CUR.words.concat(BUILTIN[0].words)).slice(0,6);}
 function options(correct, wrongs, cb){
@@ -1080,8 +1257,8 @@ function hint(en){return en[0]+' _ '.repeat(Math.max(en.length-2,0))+' '+en.slic
 function revealHint(btn){ const t=btn.parentNode.querySelector('.hinttext'); if(t)t.classList.remove('hidden'); btn.classList.add('hidden'); }
 function checkTyped(){
   if(stage===6) return checkMixTyped();  // ⚡ 빠른 암기 모의고사 중이면 전용 채점 함수로
-  const w=quizList[qi];const val=$('q-typed').value.trim().toLowerCase();
-  judge(val===w.en.toLowerCase(),null,w,'spell');
+  const w=quizList[qi];const typed=$('q-typed').value.trim();
+  trySpell(typed.toLowerCase()===w.en.toLowerCase(), typed, w.en, ok=>judge(ok,null,w,'spell'));
 }
 /* 정답률 집계: 옛 데이터엔 acc 필드가 없을 수 있어 매번 보장해줌(없으면 100%로 잘못 잡히는 원인) */
 function recordAnswer(ok){ if(!PROG.acc||typeof PROG.acc.t!=='number'){PROG.acc={c:0,t:0};} PROG.acc.t++; if(ok)PROG.acc.c++; markStudyDay(); }
@@ -1089,7 +1266,7 @@ function judge(ok,btn,w,type){
   if(btn){document.querySelectorAll('.opt').forEach(b=>b.dataset.locked='1');
     btn.classList.add(ok?'correct':'wrong');
     if(!ok)document.querySelectorAll('.opt').forEach(b=>{if(b.textContent===(stage===2?w.kr:w.en))b.classList.add('correct');});}
-  recordAnswer(ok); if(ok){qCorrect++;addXP(5);confetti(6);flyXP('+5');}
+  recordAnswer(ok); updateSRS(w.en, ok); if(ok){qCorrect++;addXP(5);confetti(6);flyXP('+5');}
   else{ PROG.typeErr[type]=(PROG.typeErr[type]||0)+1; PROG.missed[w.en]=(PROG.missed[w.en]||0)+1; }
   const delay = type==='spell' ? showSpellFeedback(ok,w.en) : (ok?520:1050);
   setTimeout(()=>{ if(qi<quizList.length-1){qi++;renderQuiz();} else finishQuiz(); }, delay);
@@ -1201,8 +1378,8 @@ function renderMix(){
   }
 }
 function checkMixTyped(){
-  const {w}=mixList[mi]; const val=$('q-typed').value.trim().toLowerCase();
-  mixJudge(val===w.en.toLowerCase(), null, w, 'spell');
+  const {w}=mixList[mi]; const typed=$('q-typed').value.trim();
+  trySpell(typed.toLowerCase()===w.en.toLowerCase(), typed, w.en, ok=>mixJudge(ok,null,w,'spell'));
 }
 function mixJudge(ok,btn,w,type){
   if(btn){document.querySelectorAll('.opt').forEach(b=>b.dataset.locked='1');
@@ -1212,7 +1389,7 @@ function mixJudge(ok,btn,w,type){
       document.querySelectorAll('.opt').forEach(b=>{if(b.textContent===answerText)b.classList.add('correct');});
     }
   }
-  recordAnswer(ok);
+  recordAnswer(ok); updateSRS(w.en, ok);
   if(ok){ mCorrect++; addXP(4); confetti(5); flyXP('+4'); }
   else{
     if(type!=='interp'){ PROG.typeErr[type]=(PROG.typeErr[type]||0)+1; }   // 리포트의 '약점 유형'은 기존 4종만 집계
